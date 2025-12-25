@@ -37,7 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-background">
       <Sidebar onOpenChange={setSidebarOpen} />
-      <main className="flex-1 overflow-auto ml-64 md:ml-0">{children}</main>
+      <main className="flex-1 overflow-auto ml-0 md:ml-64">{children}</main>
     </div>
   )
 }
