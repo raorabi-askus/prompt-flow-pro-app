@@ -63,13 +63,45 @@ ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE prompts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 
+-- Helper functions to prevent infinite recursion in RLS policies
+-- These use SECURITY DEFINER to bypass RLS when checking team membership
+CREATE OR REPLACE FUNCTION is_team_member(p_team_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM team_members 
+    WHERE team_id = p_team_id AND user_id = p_user_id
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION is_team_admin(p_team_id UUID, p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM team_members 
+    WHERE team_id = p_team_id AND user_id = p_user_id AND role = 'admin'
+  );
+END;
+$$;
+
+-- Grant execute permissions
+GRANT EXECUTE ON FUNCTION is_team_member(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION is_team_admin(UUID, UUID) TO authenticated;
+
 -- RLS Policies for teams
 CREATE POLICY "Users can view teams they are members of"
   ON teams FOR SELECT
   USING (
-    auth.uid() IN (
-      SELECT user_id FROM team_members WHERE team_id = teams.id
-    ) OR created_by = auth.uid()
+    is_team_member(id, auth.uid()) OR created_by = auth.uid()
   );
 
 CREATE POLICY "Users can create teams"
@@ -79,20 +111,11 @@ CREATE POLICY "Users can create teams"
 -- RLS Policies for team_members
 CREATE POLICY "Users can view team members of their teams"
   ON team_members FOR SELECT
-  USING (
-    auth.uid() IN (
-      SELECT user_id FROM team_members tm WHERE tm.team_id = team_members.team_id
-    )
-  );
+  USING (is_team_member(team_id, auth.uid()));
 
 CREATE POLICY "Team admins can manage members"
   ON team_members FOR ALL
-  USING (
-    auth.uid() IN (
-      SELECT user_id FROM team_members tm 
-      WHERE tm.team_id = team_members.team_id AND tm.role = 'admin'
-    )
-  );
+  USING (is_team_admin(team_id, auth.uid()));
 
 -- RLS Policies for categories
 CREATE POLICY "Users can view categories of their teams"
