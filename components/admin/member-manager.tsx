@@ -1,64 +1,100 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Trash2, Plus } from "lucide-react"
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Trash2, Plus } from "lucide-react";
 
 export function MemberManager() {
-  const [members, setMembers] = useState<any[]>([])
-  const [teams, setTeams] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isOpen, setIsOpen] = useState(false)
-  const [selectedTeam, setSelectedTeam] = useState("")
-  const [email, setEmail] = useState("")
-  const [role, setRole] = useState("member")
-  const supabase = createClient()
+  const [members, setMembers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("member");
+  const supabase = createClient();
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
-    const { data: teamData } = await supabase.from("teams").select("*")
+    const { data: teamData } = await supabase.from("teams").select("*");
 
+    // Fetch team_members with teams (this relationship exists)
     const { data: memberData } = await supabase
       .from("team_members")
-      .select("*, user_profiles(email, full_name), teams(name)")
-      .order("created_at", { ascending: false })
+      .select("*, teams(name)")
+      .order("created_at", { ascending: false });
 
-    setTeams(teamData || [])
-    setMembers(memberData || [])
-    setLoading(false)
-  }
+    // Fetch user profiles separately and merge
+    if (memberData && memberData.length > 0) {
+      const userIds = memberData.map((m) => m.user_id);
+      const { data: profiles } = await supabase
+        .from("user_profiles")
+        .select("id, email, full_name")
+        .in("id", userIds);
+
+      // Create a map for quick lookup
+      const profileMap = new Map(profiles?.map((p) => [p.id, p]) || []);
+
+      // Merge profiles into members
+      const membersWithProfiles = memberData.map((member) => ({
+        ...member,
+        user_profiles: profileMap.get(member.user_id) || null,
+      }));
+
+      setMembers(membersWithProfiles);
+    } else {
+      setMembers([]);
+    }
+
+    setTeams(teamData || []);
+    setLoading(false);
+  };
 
   const handleAddMember = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
-    if (!selectedTeam || !email) return
+    if (!selectedTeam || !email) return;
 
     // This would typically be done via a server action with proper email verification
     // For now, we're showing the UI structure
 
-    setEmail("")
-    setRole("member")
-    setIsOpen(false)
-  }
+    setEmail("");
+    setRole("member");
+    setIsOpen(false);
+  };
 
   const handleRemoveMember = async (memberId: string) => {
-    const { error } = await supabase.from("team_members").delete().eq("id", memberId)
+    const { error } = await supabase
+      .from("team_members")
+      .delete()
+      .eq("id", memberId);
 
     if (!error) {
-      fetchData()
+      fetchData();
     }
-  }
+  };
 
   return (
     <>
@@ -76,9 +112,15 @@ export function MemberManager() {
           ) : members.length > 0 ? (
             <div className="space-y-4">
               {members.map((member) => (
-                <div key={member.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between p-4 border rounded-lg"
+                >
                   <div className="flex-1">
-                    <p className="font-medium">{member.user_profiles?.full_name || member.user_profiles?.email}</p>
+                    <p className="font-medium">
+                      {member.user_profiles?.full_name ||
+                        member.user_profiles?.email}
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       {member.teams?.name} • {member.role}
                     </p>
@@ -95,7 +137,9 @@ export function MemberManager() {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-center py-8">No members yet</p>
+            <p className="text-muted-foreground text-center py-8">
+              No members yet
+            </p>
           )}
         </CardContent>
       </Card>
@@ -145,7 +189,11 @@ export function MemberManager() {
               </Select>
             </div>
             <div className="flex gap-3 justify-end">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Add Member</Button>
@@ -154,5 +202,5 @@ export function MemberManager() {
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }
